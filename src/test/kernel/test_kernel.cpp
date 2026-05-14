@@ -935,6 +935,34 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     BOOST_CHECK(!new_block);
 }
 
+BOOST_AUTO_TEST_CASE(btck_get_best_entry_after_full_wipe_regression)
+{
+    // Regression: see https://github.com/bitcoin/bitcoin/issues/35293.
+    // After SetWipeDbs(true, true) on a previously-populated data dir,
+    // chainman.m_best_header is left null, so get_best_entry returns
+    // a sentinel that SEGVs in every accessor.
+    auto test_directory{TestDirectory{"get_best_entry_after_full_wipe"}};
+    auto notifications{std::make_shared<TestKernelNotifications>()};
+
+    {
+        auto context{create_context(notifications, ChainType::REGTEST)};
+        auto chainman{create_chainman(
+            test_directory, /*reindex=*/false, /*wipe_chainstate=*/false,
+            /*block_tree_db_in_memory=*/false, /*chainstate_db_in_memory=*/false, context)};
+        BlockTreeEntry best{chainman->GetBestEntry()};
+        BOOST_CHECK_EQUAL(best.GetHeight(), 0);
+    }
+
+    auto context{create_context(notifications, ChainType::REGTEST)};
+    auto chainman{create_chainman(
+        test_directory, /*reindex=*/true, /*wipe_chainstate=*/false,
+        /*block_tree_db_in_memory=*/false, /*chainstate_db_in_memory=*/false, context)};
+
+    // Today: SEGV here. After fix: height 0 (genesis re-bootstrapped).
+    BlockTreeEntry best{chainman->GetBestEntry()};
+    BOOST_CHECK_EQUAL(best.GetHeight(), 0);
+}
+
 BOOST_AUTO_TEST_CASE(btck_check_block_context_free)
 {
     constexpr size_t MERKLE_ROOT_OFFSET{4 + 32};
